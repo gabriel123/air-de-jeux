@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -45,17 +46,17 @@
   footer { padding: 10px 18px; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--line); }
   footer a { color: var(--grass-dark); }
   #map { height: 100%; min-height: 320px; }
-  .pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--coral); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
-  .pin::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: #fff; }
+  .pin { width: 38px; height: 38px; border-radius: 50%; background: var(--grass); border: 3px solid var(--sun); box-shadow: 0 1px 5px rgba(0,0,0,.45); display: grid; place-items: center; }
+  .pin svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .me { width: 16px; height: 16px; border-radius: 50%; background: #2a6fdb; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(42,111,219,.35); }
   .popup h3 { margin: 0 0 4px; font: 600 1.05rem "Fredoka", system-ui, sans-serif; }
   .popup ul { margin: 6px 0; padding-left: 18px; }
   #areaBtn { position: absolute; z-index: 500; top: 12px; left: 50%; transform: translateX(-50%); box-shadow: 0 2px 8px rgba(0,0,0,.25); }
   .mapwrap { position: relative; min-height: 0; }
   @media (max-width: 800px) {
-    .app { grid-template-columns: 1fr; grid-template-rows: 55% 45%; }
-    .mapwrap { order: -1; }
-    aside { border-right: 0; border-top: 2px solid var(--line); }
+    .app { grid-template-columns: 1fr; grid-template-rows: 50% 50%; }
+    aside { border-right: 0; border-bottom: 2px solid var(--line); }
+    footer { display: none; }
     header { padding: 10px 14px; } header p { display: none; } h1 { font-size: 1.2rem; }
     .controls { padding: 10px 14px; gap: 8px; }
   }
@@ -163,7 +164,8 @@
       return { id: e.type + e.id, lat: lat, lon: lon, tags: e.tags || {}, dist: distance(origin, [lat, lon]) };
     }).filter(Boolean).sort(function (a, b) { return a.dist - b.dist; });
 
-    var icon = L.divIcon({ className: "", html: '<div class="pin"></div>', iconSize: [30, 30], iconAnchor: [8, 30], popupAnchor: [7, -28] });
+    var swing = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3 3 21M18 3l3 18M4 4.5h16M9 4.5V15M15 4.5V15"/><rect x="6.5" y="15" width="5" height="2.2" rx="1" fill="#fff"/><rect x="12.5" y="15" width="5" height="2.2" rx="1" fill="#fff"/></svg>';
+    var icon = L.divIcon({ className: "", html: '<div class="pin">' + swing + '</div>', iconSize: [38, 38], iconAnchor: [19, 19], popupAnchor: [0, -19] });
     items.forEach(function (it) {
       var name = it.tags.name || "Aire de jeux";
       var info = details(it.tags);
