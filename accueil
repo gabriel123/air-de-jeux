@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aires de jeux près de chez vous</title>
+<meta name="description" content="Trouvez les aires de jeux pour enfants autour de vous ou d’une ville, sur une carte.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --grass: #2f7d4f; --grass-dark: #1f5a37; --sun: #f6c445; --sky: #e3f2f7;
+    --ink: #1d2b2f; --muted: #5a6b70; --line: #cfe0e5; --paper: #ffffff; --coral: #e8664f;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--sky); }
+  .app { display: grid; grid-template-columns: 400px 1fr; height: 100%; }
+  aside { display: flex; flex-direction: column; min-height: 0; background: var(--paper); border-right: 2px solid var(--line); }
+  header { padding: 18px 18px 14px; background: var(--grass); color: #fff; }
+  h1 { margin: 0 0 4px; font: 600 1.55rem/1.15 "Fredoka", system-ui, sans-serif; }
+  header p { margin: 0; opacity: .9; font-size: .95rem; }
+  .controls { padding: 14px 18px; display: grid; gap: 10px; border-bottom: 2px solid var(--line); }
+  .row { display: flex; gap: 8px; }
+  input, select, button { font: inherit; border-radius: 10px; }
+  input[type=search] { flex: 1; min-width: 0; padding: 10px 12px; border: 2px solid var(--line); }
+  select { padding: 9px 10px; border: 2px solid var(--line); background: #fff; }
+  button { cursor: pointer; border: 2px solid transparent; padding: 10px 14px; font-weight: 600; }
+  .primary { background: var(--sun); color: var(--ink); }
+  .primary:hover { background: #f0b92b; }
+  .secondary { background: #fff; color: var(--grass-dark); border-color: var(--grass); }
+  .secondary:hover { background: #eef8f1; }
+  :focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+  label { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  #status { padding: 10px 18px; font-size: .92rem; color: var(--muted); border-bottom: 1px solid var(--line); min-height: 42px; }
+  #status.error { color: #a32a16; }
+  #list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+  #list li { border-bottom: 1px solid var(--line); }
+  #list button { width: 100%; text-align: left; background: none; border: 0; border-radius: 0; padding: 12px 18px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
+  #list button:hover { background: var(--sky); }
+  .name { font-weight: 600; }
+  .dist { font-weight: 600; color: var(--grass-dark); white-space: nowrap; }
+  .meta { grid-column: 1 / -1; font-size: .85rem; color: var(--muted); }
+  footer { padding: 10px 18px; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--line); }
+  footer a { color: var(--grass-dark); }
+  #map { height: 100%; min-height: 320px; }
+  .pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--coral); border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .pin::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: #fff; }
+  .me { width: 16px; height: 16px; border-radius: 50%; background: #2a6fdb; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(42,111,219,.35); }
+  .popup h3 { margin: 0 0 4px; font: 600 1.05rem "Fredoka", system-ui, sans-serif; }
+  .popup ul { margin: 6px 0; padding-left: 18px; }
+  #areaBtn { position: absolute; z-index: 500; top: 12px; left: 50%; transform: translateX(-50%); box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  .mapwrap { position: relative; min-height: 0; }
+  @media (max-width: 800px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 55% 45%; }
+    .mapwrap { order: -1; }
+    aside { border-right: 0; border-top: 2px solid var(--line); }
+    header { padding: 10px 14px; } header p { display: none; } h1 { font-size: 1.2rem; }
+    .controls { padding: 10px 14px; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <header>
+      <h1>Aires de jeux près de chez vous</h1>
+      <p>Trouvez où emmener les enfants, autour de vous ou d’une ville.</p>
+    </header>
+    <div class="controls">
+      <form class="row" id="searchForm" role="search">
+        <input type="search" id="q" placeholder="Ville ou adresse" aria-label="Ville ou adresse" autocomplete="off">
+        <button class="primary" type="submit">Chercher</button>
+      </form>
+      <div class="row">
+        <button class="secondary" id="locateBtn" type="button">Utiliser ma position</button>
+        <label>Rayon
+          <select id="radius" aria-label="Rayon de recherche">
+            <option value="500">500 m</option>
+            <option value="1000" selected>1 km</option>
+            <option value="2000">2 km</option>
+            <option value="5000">5 km</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div id="status" role="status" aria-live="polite">Saisissez un lieu ou utilisez votre position pour commencer.</div>
+    <ul id="list"></ul>
+    <footer>Données © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">contributeurs OpenStreetMap</a>. Une aire manque ou une info est fausse ? <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">Corrigez-la sur OpenStreetMap</a>.</footer>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" aria-label="Carte des aires de jeux"></div>
+    <button class="secondary" id="areaBtn" type="button" hidden>Chercher dans cette zone</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  var OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+  var map = L.map("map", { zoomControl: true }).setView([46.6, 2.5], 6);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "© OpenStreetMap"
+  }).addTo(map);
+
+  var layer = L.layerGroup().addTo(map);
+  var meMarker = null, markers = {}, busy = false;
+  var $ = function (id) { return document.getElementById(id); };
+  var statusEl = $("status"), listEl = $("list"), areaBtn = $("areaBtn");
+
+  function setStatus(msg, isError) { statusEl.textContent = msg; statusEl.className = isError ? "error" : ""; }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+  function distance(a, b) {
+    var R = 6371000, rad = Math.PI / 180;
+    var dLat = (b[0] - a[0]) * rad, dLon = (b[1] - a[1]) * rad;
+    var h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function fmtDist(m) { return m < 1000 ? Math.round(m / 10) * 10 + " m" : (m / 1000).toFixed(1).replace(".", ",") + " km"; }
+
+  // Informations lisibles à partir des tags OSM
+  function details(t) {
+    var d = [];
+    if (t.min_age || t.max_age) {
+      d.push("Âge : " + (t.min_age && t.max_age ? t.min_age + " à " + t.max_age + " ans" : t.min_age ? "dès " + t.min_age + " ans" : "jusqu’à " + t.max_age + " ans"));
+    }
+    if (t.wheelchair === "yes") d.push("Accessible en fauteuil roulant");
+    else if (t.wheelchair === "limited") d.push("Accessibilité limitée en fauteuil");
+    else if (t.wheelchair === "no") d.push("Non accessible en fauteuil");
+    if (t.fenced === "yes") d.push("Clôturée");
+    var surf = { sand: "sable", grass: "herbe", rubber: "caoutchouc", wood_chips: "copeaux", gravel: "gravier", paving_stones: "pavés", asphalt: "bitume", tartan: "sol amortissant" };
+    if (t.surface && surf[t.surface]) d.push("Sol : " + surf[t.surface]);
+    if (t.access === "private") d.push("Accès privé");
+    else if (t.access === "customers") d.push("Réservée aux clients");
+    if (t.opening_hours) d.push("Horaires : " + t.opening_hours);
+    return d;
+  }
+
+  function buildQuery(area) {
+    return '[out:json][timeout:25];nwr["leisure"="playground"]' + area + ';out center tags;';
+  }
+
+  async function fetchPlaygrounds(area) {
+    var body = "data=" + encodeURIComponent(buildQuery(area)), lastErr;
+    for (var i = 0; i < OVERPASS.length; i++) {
+      try {
+        var r = await fetch(OVERPASS[i], { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return (await r.json()).elements || [];
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
+  }
+
+  function show(elements, origin) {
+    layer.clearLayers(); markers = {}; listEl.innerHTML = "";
+    var items = elements.map(function (e) {
+      var lat = e.lat != null ? e.lat : e.center && e.center.lat;
+      var lon = e.lon != null ? e.lon : e.center && e.center.lon;
+      if (lat == null || lon == null) return null;
+      return { id: e.type + e.id, lat: lat, lon: lon, tags: e.tags || {}, dist: distance(origin, [lat, lon]) };
+    }).filter(Boolean).sort(function (a, b) { return a.dist - b.dist; });
+
+    var icon = L.divIcon({ className: "", html: '<div class="pin"></div>', iconSize: [30, 30], iconAnchor: [8, 30], popupAnchor: [7, -28] });
+    items.forEach(function (it) {
+      var name = it.tags.name || "Aire de jeux";
+      var info = details(it.tags);
+      var popup = '<div class="popup"><h3>' + esc(name) + '</h3>' +
+        (info.length ? '<ul>' + info.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "<p>Pas de détails renseignés.</p>") +
+        '<a href="https://www.google.com/maps/dir/?api=1&destination=' + it.lat + "," + it.lon + '" target="_blank" rel="noopener">Itinéraire</a></div>';
+      var m = L.marker([it.lat, it.lon], { icon: icon, title: name }).bindPopup(popup).addTo(layer);
+      markers[it.id] = m;
+
+      var li = document.createElement("li");
+      var b = document.createElement("button");
+      b.type = "button";
+      b.innerHTML = '<span class="name">' + esc(name) + '</span><span class="dist">' + fmtDist(it.dist) + '</span>' +
+        '<span class="meta">' + esc(info.slice(0, 3).join(" · ") || "Pas de détails renseignés") + '</span>';
+      b.addEventListener("click", function () { map.setView([it.lat, it.lon], Math.max(map.getZoom(), 17)); m.openPopup(); });
+      li.appendChild(b); listEl.appendChild(li);
+    });
+    return items.length;
+  }
+
+  function setMe(lat, lon) {
+    if (meMarker) meMarker.remove();
+    meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: "", html: '<div class="me"></div>', iconSize: [16, 16] }), interactive: false, keyboard: false }).addTo(map);
+  }
+
+  async function run(area, origin, label, fit) {
+    if (busy) return;
+    busy = true; setStatus("Recherche des aires de jeux…"); areaBtn.hidden = true;
+    try {
+      var els = await fetchPlaygrounds(area);
+      var n = show(els, origin);
+      if (n === 0) setStatus("Aucune aire de jeux trouvée " + label + ". Essayez un rayon plus grand.");
+      else {
+        setStatus(n + (n > 1 ? " aires de jeux trouvées " : " aire de jeux trouvée ") + label + ", de la plus proche à la plus éloignée.");
+        if (fit) {
+          var pts = Object.keys(markers).map(function (k) { return markers[k].getLatLng(); });
+          pts.push(L.latLng(origin[0], origin[1]));
+          map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 17 });
+        }
+      }
+    } catch (e) {
+      setStatus("La recherche a échoué. Vérifiez votre connexion et réessayez dans un instant.", true);
+    } finally { busy = false; }
+  }
+
+  function searchAround(lat, lon, label) {
+    var r = parseInt($("radius").value, 10);
+    setMe(lat, lon);
+    map.setView([lat, lon], r <= 1000 ? 16 : r <= 2000 ? 15 : 14);
+    run("(around:" + r + "," + lat + "," + lon + ")", [lat, lon], label + " (dans " + fmtDist(r) + ")", true);
+  }
+
+  $("searchForm").addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    var q = $("q").value.trim();
+    if (!q) { setStatus("Saisissez une ville ou une adresse.", true); return; }
+    setStatus("Recherche du lieu…");
+    try {
+      var r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&q=" + encodeURIComponent(q));
+      var data = await r.json();
+      if (!data.length) { setStatus("Lieu introuvable. Essayez avec une ville ou une adresse plus précise.", true); return; }
+      searchAround(parseFloat(data[0].lat), parseFloat(data[0].lon), "autour de " + data[0].display_name.split(",")[0]);
+    } catch (e) { setStatus("La recherche du lieu a échoué. Réessayez dans un instant.", true); }
+  });
+
+  $("locateBtn").addEventListener("click", function () {
+    if (!navigator.geolocation) { setStatus("Votre navigateur ne permet pas la géolocalisation. Saisissez un lieu.", true); return; }
+    setStatus("Localisation en cours…");
+    navigator.geolocation.getCurrentPosition(
+      function (p) { searchAround(p.coords.latitude, p.coords.longitude, "autour de vous"); },
+      function (err) {
+        setStatus(err.code === 1 ? "Position refusée. Autorisez-la dans votre navigateur ou saisissez un lieu." : "Position indisponible. Saisissez un lieu.", true);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+
+  $("radius").addEventListener("change", function () {
+    if (meMarker) { var ll = meMarker.getLatLng(); searchAround(ll.lat, ll.lng, "autour de ce point"); }
+  });
+
+  // Après un déplacement de la carte, proposer de chercher dans la zone visible
+  map.on("moveend", function () { if (!busy && map.getZoom() >= 13) areaBtn.hidden = false; });
+  areaBtn.addEventListener("click", function () {
+    var b = map.getBounds(), c = map.getCenter();
+    run("(" + b.getSouth() + "," + b.getWest() + "," + b.getNorth() + "," + b.getEast() + ")", [c.lat, c.lng], "dans la zone affichée", false);
+  });
+})();
+</script>
+</body>
+</html>
