@@ -1,18 +1,17 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Aires de jeux près de chez vous</title>
-<meta name="description" content="Trouvez les aires de jeux pour enfants autour de vous ou d’une ville, sur une carte.">
+<title>Aires de jeux et toilettes publiques près de chez vous</title>
+<meta name="description" content="Trouvez les aires de jeux pour enfants et les toilettes publiques autour de vous ou d’une ville, sur une carte.">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --grass: #2f7d4f; --grass-dark: #1f5a37; --sun: #f6c445; --sky: #e3f2f7;
-    --ink: #1d2b2f; --muted: #5a6b70; --line: #cfe0e5; --paper: #ffffff; --coral: #e8664f;
+    --ink: #1d2b2f; --muted: #5a6b70; --line: #cfe0e5; --paper: #ffffff; --coral: #e8664f; --water: #2a6fdb;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -32,6 +31,10 @@
   .primary:hover { background: #f0b92b; }
   .secondary { background: #fff; color: var(--grass-dark); border-color: var(--grass); }
   .secondary:hover { background: #eef8f1; }
+  .mode { flex: 1; background: #fff; color: var(--ink); border-color: var(--line); }
+  .mode:hover { background: var(--sky); }
+  .mode[aria-pressed=true] { background: var(--grass); border-color: var(--grass); color: #fff; }
+  .mode[data-mode=toilets][aria-pressed=true] { background: var(--water); border-color: var(--water); }
   :focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
   label { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
   #status { padding: 10px 18px; font-size: .92rem; color: var(--muted); border-bottom: 1px solid var(--line); min-height: 42px; }
@@ -41,15 +44,18 @@
   #list button { width: 100%; text-align: left; background: none; border: 0; border-radius: 0; padding: 12px 18px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
   #list button:hover { background: var(--sky); }
   .name { font-weight: 600; }
+  .name.pending { font-weight: 400; color: var(--muted); }
   .dist { font-weight: 600; color: var(--grass-dark); white-space: nowrap; }
   .meta { grid-column: 1 / -1; font-size: .85rem; color: var(--muted); }
   footer { padding: 10px 18px; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--line); }
   footer a { color: var(--grass-dark); }
   #map { height: 100%; min-height: 320px; }
   .pin { width: 38px; height: 38px; border-radius: 50%; background: var(--grass); border: 3px solid var(--sun); box-shadow: 0 1px 5px rgba(0,0,0,.45); display: grid; place-items: center; }
+  .pin.wc { background: var(--water); border-color: #fff; }
   .pin svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .me { width: 16px; height: 16px; border-radius: 50%; background: #2a6fdb; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(42,111,219,.35); }
   .popup h3 { margin: 0 0 4px; font: 600 1.05rem "Fredoka", system-ui, sans-serif; }
+  .popup p { margin: 4px 0; }
   .popup ul { margin: 6px 0; padding-left: 18px; }
   #areaBtn { position: absolute; z-index: 500; top: 12px; left: 50%; transform: translateX(-50%); box-shadow: 0 2px 8px rgba(0,0,0,.25); }
   .mapwrap { position: relative; min-height: 0; }
@@ -66,10 +72,14 @@
 <div class="app">
   <aside>
     <header>
-      <h1>Aires de jeux près de chez vous</h1>
-      <p>Trouvez où emmener les enfants, autour de vous ou d’une ville.</p>
+      <h1>Aires de jeux et toilettes</h1>
+      <p>Trouvez où emmener les enfants, et où faire une pause, près de chez vous.</p>
     </header>
     <div class="controls">
+      <div class="row" role="group" aria-label="Type de lieu à chercher">
+        <button class="mode" type="button" data-mode="playground" aria-pressed="true">Aires de jeux</button>
+        <button class="mode" type="button" data-mode="toilets" aria-pressed="false">Toilettes publiques</button>
+      </div>
       <form class="row" id="searchForm" role="search">
         <input type="search" id="q" placeholder="Ville ou adresse" aria-label="Ville ou adresse" autocomplete="off">
         <button class="primary" type="submit">Chercher</button>
@@ -86,12 +96,12 @@
         </label>
       </div>
     </div>
-    <div id="status" role="status" aria-live="polite">Saisissez un lieu ou utilisez votre position pour commencer.</div>
+    <div id="status" role="status" aria-live="polite">Choisissez un type de lieu, puis saisissez un lieu ou utilisez votre position.</div>
     <ul id="list"></ul>
-    <footer>Données © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">contributeurs OpenStreetMap</a>. Une aire manque ou une info est fausse ? <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">Corrigez-la sur OpenStreetMap</a>.</footer>
+    <footer>Données © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">contributeurs OpenStreetMap</a>. Un lieu manque ou une info est fausse ? <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">Corrigez-la sur OpenStreetMap</a>.</footer>
   </aside>
   <div class="mapwrap">
-    <div id="map" aria-label="Carte des aires de jeux"></div>
+    <div id="map" aria-label="Carte des lieux"></div>
     <button class="secondary" id="areaBtn" type="button" hidden>Chercher dans cette zone</button>
   </div>
 </div>
@@ -100,10 +110,19 @@
 <script>
 (function () {
   var OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+  var SWING = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3 3 21M18 3l3 18M4 4.5h16M9 4.5V15M15 4.5V15"/><rect x="6.5" y="15" width="5" height="2.2" rx="1" fill="#fff"/><rect x="12.5" y="15" width="5" height="2.2" rx="1" fill="#fff"/></svg>';
+  var WC = '<svg viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="16.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" stroke="none" font-family="system-ui,sans-serif">WC</text></svg>';
+
+  var MODES = {
+    playground: { filter: '["leisure"="playground"]', single: "Aire de jeux", none: "aire de jeux",
+      found1: "aire de jeux trouvée", foundN: "aires de jeux trouvées", cls: "", icon: SWING },
+    toilets: { filter: '["amenity"="toilets"]["access"!="private"]', single: "Toilettes publiques", none: "toilette publique",
+      found1: "toilettes publiques trouvées", foundN: "toilettes publiques trouvées", cls: "wc", icon: WC }
+  };
+  var mode = "playground", lastSearch = null, geoToken = 0;
+
   var map = L.map("map", { zoomControl: true }).setView([46.6, 2.5], 6);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: "© OpenStreetMap"
-  }).addTo(map);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
 
   var layer = L.layerGroup().addTo(map);
   var meMarker = null, markers = {}, busy = false;
@@ -112,6 +131,7 @@
 
   function setStatus(msg, isError) { statusEl.textContent = msg; statusEl.className = isError ? "error" : ""; }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   function distance(a, b) {
     var R = 6371000, rad = Math.PI / 180;
@@ -121,30 +141,33 @@
   }
   function fmtDist(m) { return m < 1000 ? Math.round(m / 10) * 10 + " m" : (m / 1000).toFixed(1).replace(".", ",") + " km"; }
 
-  // Informations lisibles à partir des tags OSM
+  function addrFromTags(t) {
+    var street = ((t["addr:housenumber"] || "") + " " + (t["addr:street"] || "")).trim();
+    var city = t["addr:city"] || "";
+    return [street, city].filter(Boolean).join(", ");
+  }
+
   function details(t) {
     var d = [];
     if (t.min_age || t.max_age) {
       d.push("Âge : " + (t.min_age && t.max_age ? t.min_age + " à " + t.max_age + " ans" : t.min_age ? "dès " + t.min_age + " ans" : "jusqu’à " + t.max_age + " ans"));
     }
+    if (t.fee === "yes") d.push("Payant"); else if (t.fee === "no") d.push("Gratuit");
+    if (t.changing_table === "yes") d.push("Table à langer");
     if (t.wheelchair === "yes") d.push("Accessible en fauteuil roulant");
     else if (t.wheelchair === "limited") d.push("Accessibilité limitée en fauteuil");
     else if (t.wheelchair === "no") d.push("Non accessible en fauteuil");
     if (t.fenced === "yes") d.push("Clôturée");
     var surf = { sand: "sable", grass: "herbe", rubber: "caoutchouc", wood_chips: "copeaux", gravel: "gravier", paving_stones: "pavés", asphalt: "bitume", tartan: "sol amortissant" };
     if (t.surface && surf[t.surface]) d.push("Sol : " + surf[t.surface]);
-    if (t.access === "private") d.push("Accès privé");
-    else if (t.access === "customers") d.push("Réservée aux clients");
+    if (t.access === "customers") d.push("Réservé aux clients");
     if (t.opening_hours) d.push("Horaires : " + t.opening_hours);
     return d;
   }
 
-  function buildQuery(area) {
-    return '[out:json][timeout:25];nwr["leisure"="playground"]' + area + ';out center tags;';
-  }
-
-  async function fetchPlaygrounds(area) {
-    var body = "data=" + encodeURIComponent(buildQuery(area)), lastErr;
+  async function fetchPlaces(area) {
+    var q = '[out:json][timeout:25];nwr' + MODES[mode].filter + area + ';out center tags;';
+    var body = "data=" + encodeURIComponent(q), lastErr;
     for (var i = 0; i < OVERPASS.length; i++) {
       try {
         var r = await fetch(OVERPASS[i], { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body });
@@ -155,34 +178,69 @@
     throw lastErr;
   }
 
+  function popupHtml(it, cfg) {
+    var info = details(it.tags);
+    return '<div class="popup"><h3>' + esc(it.label || cfg.single) + '</h3>' +
+      (it.name && it.addr ? "<p>" + esc(it.addr) + "</p>" : "") +
+      (info.length ? "<ul>" + info.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "<p>Pas de détails renseignés.</p>") +
+      '<a href="https://www.google.com/maps/dir/?api=1&destination=' + it.lat + "," + it.lon + '" target="_blank" rel="noopener">Itinéraire</a></div>';
+  }
+
+  function refresh(it, cfg) {
+    it.nameEl.textContent = it.label || cfg.single;
+    it.nameEl.className = it.label ? "name" : "name pending";
+    it.marker.setPopupContent(popupHtml(it, cfg));
+  }
+
+  // Cherche l'adresse des lieux sans nom ni adresse (Nominatim : 1 requête par seconde max)
+  async function resolveAddresses(items, cfg) {
+    var token = ++geoToken;
+    var todo = items.filter(function (i) { return !i.label; }).slice(0, 15);
+    for (var k = 0; k < todo.length; k++) {
+      if (token !== geoToken) return;
+      var it = todo[k];
+      try {
+        var r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=fr&lat=" + it.lat + "&lon=" + it.lon);
+        var a = (await r.json()).address || {};
+        var road = a.road || a.pedestrian || a.footway || a.path || a.neighbourhood || a.suburb || "";
+        var street = ((a.house_number || "") + " " + road).trim();
+        var city = a.city || a.town || a.village || a.municipality || "";
+        var label = [street, city].filter(Boolean).join(", ");
+        if (label && token === geoToken) { it.label = label; refresh(it, cfg); }
+      } catch (e) { /* on garde le nom générique */ }
+      await sleep(1100);
+    }
+  }
+
   function show(elements, origin) {
-    layer.clearLayers(); markers = {}; listEl.innerHTML = "";
+    layer.clearLayers(); markers = {}; listEl.innerHTML = ""; geoToken++;
+    var cfg = MODES[mode];
     var items = elements.map(function (e) {
       var lat = e.lat != null ? e.lat : e.center && e.center.lat;
       var lon = e.lon != null ? e.lon : e.center && e.center.lon;
       if (lat == null || lon == null) return null;
-      return { id: e.type + e.id, lat: lat, lon: lon, tags: e.tags || {}, dist: distance(origin, [lat, lon]) };
+      var tags = e.tags || {};
+      var it = { id: e.type + e.id, lat: lat, lon: lon, tags: tags, name: tags.name || "", addr: addrFromTags(tags), dist: distance(origin, [lat, lon]) };
+      it.label = it.name || it.addr;
+      return it;
     }).filter(Boolean).sort(function (a, b) { return a.dist - b.dist; });
 
-    var swing = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3 3 21M18 3l3 18M4 4.5h16M9 4.5V15M15 4.5V15"/><rect x="6.5" y="15" width="5" height="2.2" rx="1" fill="#fff"/><rect x="12.5" y="15" width="5" height="2.2" rx="1" fill="#fff"/></svg>';
-    var icon = L.divIcon({ className: "", html: '<div class="pin">' + swing + '</div>', iconSize: [38, 38], iconAnchor: [19, 19], popupAnchor: [0, -19] });
+    var icon = L.divIcon({ className: "", html: '<div class="pin ' + cfg.cls + '">' + cfg.icon + '</div>', iconSize: [38, 38], iconAnchor: [19, 19], popupAnchor: [0, -19] });
     items.forEach(function (it) {
-      var name = it.tags.name || "Aire de jeux";
-      var info = details(it.tags);
-      var popup = '<div class="popup"><h3>' + esc(name) + '</h3>' +
-        (info.length ? '<ul>' + info.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "<p>Pas de détails renseignés.</p>") +
-        '<a href="https://www.google.com/maps/dir/?api=1&destination=' + it.lat + "," + it.lon + '" target="_blank" rel="noopener">Itinéraire</a></div>';
-      var m = L.marker([it.lat, it.lon], { icon: icon, title: name }).bindPopup(popup).addTo(layer);
-      markers[it.id] = m;
+      it.marker = L.marker([it.lat, it.lon], { icon: icon, title: it.label || cfg.single }).bindPopup(popupHtml(it, cfg)).addTo(layer);
+      markers[it.id] = it.marker;
 
+      var meta = [it.name ? it.addr : ""].concat(details(it.tags)).filter(Boolean).slice(0, 3).join(" · ");
       var li = document.createElement("li");
       var b = document.createElement("button");
       b.type = "button";
-      b.innerHTML = '<span class="name">' + esc(name) + '</span><span class="dist">' + fmtDist(it.dist) + '</span>' +
-        '<span class="meta">' + esc(info.slice(0, 3).join(" · ") || "Pas de détails renseignés") + '</span>';
-      b.addEventListener("click", function () { map.setView([it.lat, it.lon], Math.max(map.getZoom(), 17)); m.openPopup(); });
+      b.innerHTML = '<span class="name"></span><span class="dist">' + fmtDist(it.dist) + '</span><span class="meta">' + esc(meta || "Pas de détails renseignés") + '</span>';
+      it.nameEl = b.querySelector(".name");
+      refresh(it, cfg);
+      b.addEventListener("click", function () { map.setView([it.lat, it.lon], Math.max(map.getZoom(), 17)); it.marker.openPopup(); });
       li.appendChild(b); listEl.appendChild(li);
     });
+    resolveAddresses(items, cfg);
     return items.length;
   }
 
@@ -191,18 +249,20 @@
     meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: "", html: '<div class="me"></div>', iconSize: [16, 16] }), interactive: false, keyboard: false }).addTo(map);
   }
 
-  async function run(area, origin, label, fit) {
+  async function run(search) {
     if (busy) return;
-    busy = true; setStatus("Recherche des aires de jeux…"); areaBtn.hidden = true;
+    lastSearch = search;
+    var cfg = MODES[mode];
+    busy = true; setStatus("Recherche en cours…"); areaBtn.hidden = true;
     try {
-      var els = await fetchPlaygrounds(area);
-      var n = show(els, origin);
-      if (n === 0) setStatus("Aucune aire de jeux trouvée " + label + ". Essayez un rayon plus grand.");
+      var els = await fetchPlaces(search.area);
+      var n = show(els, search.origin);
+      if (n === 0) setStatus("Aucune " + cfg.none + " trouvée " + search.label + ". Essayez un rayon plus grand.");
       else {
-        setStatus(n + (n > 1 ? " aires de jeux trouvées " : " aire de jeux trouvée ") + label + ", de la plus proche à la plus éloignée.");
-        if (fit) {
+        setStatus(n + " " + (n > 1 ? cfg.foundN : cfg.found1) + " " + search.label + ", du plus proche au plus éloigné.");
+        if (search.fit) {
           var pts = Object.keys(markers).map(function (k) { return markers[k].getLatLng(); });
-          pts.push(L.latLng(origin[0], origin[1]));
+          pts.push(L.latLng(search.origin[0], search.origin[1]));
           map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 17 });
         }
       }
@@ -215,8 +275,18 @@
     var r = parseInt($("radius").value, 10);
     setMe(lat, lon);
     map.setView([lat, lon], r <= 1000 ? 16 : r <= 2000 ? 15 : 14);
-    run("(around:" + r + "," + lat + "," + lon + ")", [lat, lon], label + " (dans " + fmtDist(r) + ")", true);
+    run({ area: "(around:" + r + "," + lat + "," + lon + ")", origin: [lat, lon], label: label + " (dans " + fmtDist(r) + ")", fit: true });
   }
+
+  document.querySelectorAll(".mode").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (btn.dataset.mode === mode) return;
+      mode = btn.dataset.mode;
+      document.querySelectorAll(".mode").forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
+      if (lastSearch) { lastSearch.fit = true; run(lastSearch); }
+      else setStatus("Saisissez un lieu ou utilisez votre position pour commencer.");
+    });
+  });
 
   $("searchForm").addEventListener("submit", async function (ev) {
     ev.preventDefault();
@@ -247,11 +317,10 @@
     if (meMarker) { var ll = meMarker.getLatLng(); searchAround(ll.lat, ll.lng, "autour de ce point"); }
   });
 
-  // Après un déplacement de la carte, proposer de chercher dans la zone visible
   map.on("moveend", function () { if (!busy && map.getZoom() >= 13) areaBtn.hidden = false; });
   areaBtn.addEventListener("click", function () {
     var b = map.getBounds(), c = map.getCenter();
-    run("(" + b.getSouth() + "," + b.getWest() + "," + b.getNorth() + "," + b.getEast() + ")", [c.lat, c.lng], "dans la zone affichée", false);
+    run({ area: "(" + b.getSouth() + "," + b.getWest() + "," + b.getNorth() + "," + b.getEast() + ")", origin: [c.lat, c.lng], label: "dans la zone affichée", fit: false });
   });
 })();
 </script>
