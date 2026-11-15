@@ -34,6 +34,7 @@
   .mode { flex: 1; background: #fff; color: var(--ink); border-color: var(--line); }
   .mode:hover { background: var(--sky); }
   .mode[aria-pressed=true] { background: var(--grass); border-color: var(--grass); color: #fff; }
+  .mode[aria-pressed=false] { text-decoration: line-through; color: var(--muted); }
   .mode[data-mode=toilets][aria-pressed=true] { background: var(--water); border-color: var(--water); }
   :focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
   label { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
@@ -41,17 +42,20 @@
   #status.error { color: #a32a16; }
   #list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
   #list li { border-bottom: 1px solid var(--line); }
-  #list button { width: 100%; text-align: left; background: none; border: 0; border-radius: 0; padding: 12px 18px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
+  #list button { width: 100%; text-align: left; background: none; border: 0; border-radius: 0; padding: 12px 18px; display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; align-items: start; }
+  #list .pin { grid-row: 1 / span 2; }
   #list button:hover { background: var(--sky); }
   .name { font-weight: 600; }
   .name.pending { font-weight: 400; color: var(--muted); }
   .dist { font-weight: 600; color: var(--grass-dark); white-space: nowrap; }
-  .meta { grid-column: 1 / -1; font-size: .85rem; color: var(--muted); }
+  .meta { grid-column: 2 / -1; font-size: .85rem; color: var(--muted); }
   footer { padding: 10px 18px; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--line); }
   footer a { color: var(--grass-dark); }
   #map { height: 100%; min-height: 320px; }
   .pin { width: 38px; height: 38px; border-radius: 50%; background: var(--grass); border: 3px solid var(--sun); box-shadow: 0 1px 5px rgba(0,0,0,.45); display: grid; place-items: center; }
   .pin.wc { background: var(--water); border-color: #fff; }
+  .pin.s { width: 28px; height: 28px; border-width: 2px; box-shadow: none; }
+  .pin.s svg { width: 17px; height: 17px; }
   .pin svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .me { width: 16px; height: 16px; border-radius: 50%; background: #2a6fdb; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(42,111,219,.35); }
   .popup h3 { margin: 0 0 4px; font: 600 1.05rem "Fredoka", system-ui, sans-serif; }
@@ -76,7 +80,7 @@
       <p>Trouvez où emmener les enfants, et où faire une pause, près de chez vous.</p>
     </header>
     <div class="controls">
-      <div class="row" role="group" aria-label="Type de lieu à chercher">
+      <div class="row" role="group" aria-label="Types de lieux à afficher">
         <button class="mode" type="button" data-mode="playground" aria-pressed="true">Aires de jeux</button>
         <button class="mode" type="button" data-mode="toilets" aria-pressed="false">Toilettes publiques</button>
       </div>
@@ -96,7 +100,7 @@
         </label>
       </div>
     </div>
-    <div id="status" role="status" aria-live="polite">Choisissez un type de lieu, puis saisissez un lieu ou utilisez votre position.</div>
+    <div id="status" role="status" aria-live="polite">Saisissez un lieu ou utilisez votre position pour commencer.</div>
     <ul id="list"></ul>
     <footer>Données © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">contributeurs OpenStreetMap</a>. Un lieu manque ou une info est fausse ? <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">Corrigez-la sur OpenStreetMap</a>.</footer>
   </aside>
@@ -113,19 +117,18 @@
   var SWING = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3 3 21M18 3l3 18M4 4.5h16M9 4.5V15M15 4.5V15"/><rect x="6.5" y="15" width="5" height="2.2" rx="1" fill="#fff"/><rect x="12.5" y="15" width="5" height="2.2" rx="1" fill="#fff"/></svg>';
   var WC = '<svg viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="16.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" stroke="none" font-family="system-ui,sans-serif">WC</text></svg>';
 
-  var MODES = {
-    playground: { filter: '["leisure"="playground"]', single: "Aire de jeux", none: "aire de jeux",
-      found1: "aire de jeux trouvée", foundN: "aires de jeux trouvées", cls: "", icon: SWING },
-    toilets: { filter: '["amenity"="toilets"]["access"!="private"]', single: "Toilettes publiques", none: "toilette publique",
-      found1: "toilettes publiques trouvées", foundN: "toilettes publiques trouvées", cls: "wc", icon: WC }
+  var TYPES = {
+    playground: { single: "Aire de jeux", singular: "aire de jeux", plural: "aires de jeux", cls: "", icon: SWING },
+    toilets: { single: "Toilettes publiques", singular: "toilette publique", plural: "toilettes publiques", cls: "wc", icon: WC }
   };
-  var mode = "playground", lastSearch = null, geoToken = 0;
+  var active = { playground: true, toilets: true };
+  var allItems = [], lastSearch = null, geoToken = 0;
 
   var map = L.map("map", { zoomControl: true }).setView([46.6, 2.5], 6);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
 
   var layer = L.layerGroup().addTo(map);
-  var meMarker = null, markers = {}, busy = false;
+  var meMarker = null, busy = false;
   var $ = function (id) { return document.getElementById(id); };
   var statusEl = $("status"), listEl = $("list"), areaBtn = $("areaBtn");
 
@@ -143,8 +146,7 @@
 
   function addrFromTags(t) {
     var street = ((t["addr:housenumber"] || "") + " " + (t["addr:street"] || "")).trim();
-    var city = t["addr:city"] || "";
-    return [street, city].filter(Boolean).join(", ");
+    return [street, t["addr:city"] || ""].filter(Boolean).join(", ");
   }
 
   function details(t) {
@@ -165,40 +167,59 @@
     return d;
   }
 
-  async function fetchPlaces(area) {
-    var q = '[out:json][timeout:25];nwr' + MODES[mode].filter + area + ';out center tags;';
-    var body = "data=" + encodeURIComponent(q), lastErr;
-    for (var i = 0; i < OVERPASS.length; i++) {
-      try {
-        var r = await fetch(OVERPASS[i], { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body });
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return (await r.json()).elements || [];
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr;
+  // Une seule requête pour les deux types ; les deux serveurs sont interrogés en parallèle, le plus rapide gagne
+  function fetchPlaces(area) {
+    var q = '[out:json][timeout:25];(nwr["leisure"="playground"]' + area + ';nwr["amenity"="toilets"]["access"!="private"]' + area + ';);out center tags qt;';
+    var body = "data=" + encodeURIComponent(q);
+    var ctrls = OVERPASS.map(function () { return new AbortController(); });
+    var timer = setTimeout(function () { ctrls.forEach(function (c) { c.abort(); }); }, 30000);
+    return Promise.any(OVERPASS.map(function (url, i) {
+      return fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body, signal: ctrls[i].signal })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (j) { ctrls.forEach(function (c, k) { if (k !== i) c.abort(); }); return j.elements || []; });
+    })).finally(function () { clearTimeout(timer); });
   }
 
-  function popupHtml(it, cfg) {
+  function buildItems(elements, origin) {
+    return elements.map(function (e) {
+      var lat = e.lat != null ? e.lat : e.center && e.center.lat;
+      var lon = e.lon != null ? e.lon : e.center && e.center.lon;
+      if (lat == null || lon == null) return null;
+      var tags = e.tags || {};
+      var it = { id: e.type + e.id, type: tags.leisure === "playground" ? "playground" : "toilets", lat: lat, lon: lon, tags: tags,
+                 name: tags.name || "", addr: addrFromTags(tags), dist: distance(origin, [lat, lon]), tried: false };
+      it.label = it.name || it.addr;
+      return it;
+    }).filter(Boolean).sort(function (a, b) { return a.dist - b.dist; });
+  }
+
+  function iconFor(type) {
+    var t = TYPES[type];
+    return L.divIcon({ className: "", html: '<div class="pin ' + t.cls + '">' + t.icon + '</div>', iconSize: [38, 38], iconAnchor: [19, 19], popupAnchor: [0, -19] });
+  }
+
+  function popupHtml(it) {
     var info = details(it.tags);
-    return '<div class="popup"><h3>' + esc(it.label || cfg.single) + '</h3>' +
-      (it.name && it.addr ? "<p>" + esc(it.addr) + "</p>" : "") +
+    return '<div class="popup"><h3>' + esc(it.label || TYPES[it.type].single) + '</h3>' +
+      '<p>' + esc(TYPES[it.type].single) + (it.name && it.addr ? " · " + esc(it.addr) : "") + '</p>' +
       (info.length ? "<ul>" + info.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "<p>Pas de détails renseignés.</p>") +
       '<a href="https://www.google.com/maps/dir/?api=1&destination=' + it.lat + "," + it.lon + '" target="_blank" rel="noopener">Itinéraire</a></div>';
   }
 
-  function refresh(it, cfg) {
-    it.nameEl.textContent = it.label || cfg.single;
+  function refresh(it) {
+    if (!it.nameEl) return;
+    it.nameEl.textContent = it.label || TYPES[it.type].single;
     it.nameEl.className = it.label ? "name" : "name pending";
-    it.marker.setPopupContent(popupHtml(it, cfg));
+    it.marker.setPopupContent(popupHtml(it));
   }
 
-  // Cherche l'adresse des lieux sans nom ni adresse (Nominatim : 1 requête par seconde max)
-  async function resolveAddresses(items, cfg) {
+  // Adresse des lieux sans nom ni adresse (Nominatim : 1 requête par seconde au maximum)
+  async function resolveAddresses(items) {
     var token = ++geoToken;
-    var todo = items.filter(function (i) { return !i.label; }).slice(0, 15);
+    var todo = items.filter(function (i) { return !i.label && !i.tried; }).slice(0, 12);
     for (var k = 0; k < todo.length; k++) {
       if (token !== geoToken) return;
-      var it = todo[k];
+      var it = todo[k]; it.tried = true;
       try {
         var r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=fr&lat=" + it.lat + "&lon=" + it.lon);
         var a = (await r.json()).address || {};
@@ -206,42 +227,43 @@
         var street = ((a.house_number || "") + " " + road).trim();
         var city = a.city || a.town || a.village || a.municipality || "";
         var label = [street, city].filter(Boolean).join(", ");
-        if (label && token === geoToken) { it.label = label; refresh(it, cfg); }
-      } catch (e) { /* on garde le nom générique */ }
+        if (label) { it.label = label; refresh(it); }
+      } catch (e) { it.tried = false; }
       await sleep(1100);
     }
   }
 
-  function show(elements, origin) {
-    layer.clearLayers(); markers = {}; listEl.innerHTML = ""; geoToken++;
-    var cfg = MODES[mode];
-    var items = elements.map(function (e) {
-      var lat = e.lat != null ? e.lat : e.center && e.center.lat;
-      var lon = e.lon != null ? e.lon : e.center && e.center.lon;
-      if (lat == null || lon == null) return null;
-      var tags = e.tags || {};
-      var it = { id: e.type + e.id, lat: lat, lon: lon, tags: tags, name: tags.name || "", addr: addrFromTags(tags), dist: distance(origin, [lat, lon]) };
-      it.label = it.name || it.addr;
-      return it;
-    }).filter(Boolean).sort(function (a, b) { return a.dist - b.dist; });
-
-    var icon = L.divIcon({ className: "", html: '<div class="pin ' + cfg.cls + '">' + cfg.icon + '</div>', iconSize: [38, 38], iconAnchor: [19, 19], popupAnchor: [0, -19] });
-    items.forEach(function (it) {
-      it.marker = L.marker([it.lat, it.lon], { icon: icon, title: it.label || cfg.single }).bindPopup(popupHtml(it, cfg)).addTo(layer);
-      markers[it.id] = it.marker;
-
+  // Affiche les lieux des types activés (sans nouvelle requête réseau)
+  function render(fit) {
+    layer.clearLayers(); listEl.innerHTML = ""; geoToken++;
+    var vis = allItems.filter(function (i) { return active[i.type]; });
+    vis.forEach(function (it) {
+      var cfg = TYPES[it.type];
+      it.marker = L.marker([it.lat, it.lon], { icon: iconFor(it.type), title: it.label || cfg.single }).bindPopup(popupHtml(it)).addTo(layer);
       var meta = [it.name ? it.addr : ""].concat(details(it.tags)).filter(Boolean).slice(0, 3).join(" · ");
-      var li = document.createElement("li");
-      var b = document.createElement("button");
+      var li = document.createElement("li"), b = document.createElement("button");
       b.type = "button";
-      b.innerHTML = '<span class="name"></span><span class="dist">' + fmtDist(it.dist) + '</span><span class="meta">' + esc(meta || "Pas de détails renseignés") + '</span>';
+      b.innerHTML = '<span class="pin s ' + cfg.cls + '">' + cfg.icon + '</span><span class="name"></span><span class="dist">' + fmtDist(it.dist) + '</span><span class="meta">' + esc(meta || cfg.single) + '</span>';
       it.nameEl = b.querySelector(".name");
-      refresh(it, cfg);
+      refresh(it);
       b.addEventListener("click", function () { map.setView([it.lat, it.lon], Math.max(map.getZoom(), 17)); it.marker.openPopup(); });
       li.appendChild(b); listEl.appendChild(li);
     });
-    resolveAddresses(items, cfg);
-    return items.length;
+
+    if (lastSearch) {
+      var parts = Object.keys(TYPES).filter(function (k) { return active[k]; }).map(function (k) {
+        var n = vis.filter(function (i) { return i.type === k; }).length;
+        return n ? n + " " + (n > 1 ? TYPES[k].plural : TYPES[k].singular) : "";
+      }).filter(Boolean);
+      setStatus(parts.length ? "Résultats : " + parts.join(" et ") + " " + lastSearch.label + ", du plus proche au plus éloigné."
+                             : "Aucun lieu de ce type trouvé " + lastSearch.label + ". Essayez un rayon plus grand ou l’autre type de lieu.");
+    }
+    if (fit && vis.length && lastSearch) {
+      var pts = vis.map(function (i) { return L.latLng(i.lat, i.lon); });
+      pts.push(L.latLng(lastSearch.origin[0], lastSearch.origin[1]));
+      map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 17 });
+    }
+    resolveAddresses(vis);
   }
 
   function setMe(lat, lon) {
@@ -249,42 +271,37 @@
     meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: "", html: '<div class="me"></div>', iconSize: [16, 16] }), interactive: false, keyboard: false }).addTo(map);
   }
 
-  async function run(search) {
+  async function run(search, fit) {
     if (busy) return;
-    lastSearch = search;
-    var cfg = MODES[mode];
     busy = true; setStatus("Recherche en cours…"); areaBtn.hidden = true;
+    var slow = setTimeout(function () { if (busy) setStatus("Le serveur de données est un peu lent, merci de patienter…"); }, 4000);
     try {
       var els = await fetchPlaces(search.area);
-      var n = show(els, search.origin);
-      if (n === 0) setStatus("Aucune " + cfg.none + " trouvée " + search.label + ". Essayez un rayon plus grand.");
-      else {
-        setStatus(n + " " + (n > 1 ? cfg.foundN : cfg.found1) + " " + search.label + ", du plus proche au plus éloigné.");
-        if (search.fit) {
-          var pts = Object.keys(markers).map(function (k) { return markers[k].getLatLng(); });
-          pts.push(L.latLng(search.origin[0], search.origin[1]));
-          map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 17 });
-        }
-      }
+      allItems = buildItems(els, search.origin);
+      lastSearch = search;
+      render(fit);
     } catch (e) {
       setStatus("La recherche a échoué. Vérifiez votre connexion et réessayez dans un instant.", true);
-    } finally { busy = false; }
+    } finally { clearTimeout(slow); busy = false; }
   }
 
   function searchAround(lat, lon, label) {
     var r = parseInt($("radius").value, 10);
     setMe(lat, lon);
     map.setView([lat, lon], r <= 1000 ? 16 : r <= 2000 ? 15 : 14);
-    run({ area: "(around:" + r + "," + lat + "," + lon + ")", origin: [lat, lon], label: label + " (dans " + fmtDist(r) + ")", fit: true });
+    run({ area: "(around:" + r + "," + lat + "," + lon + ")", origin: [lat, lon], label: label + " (dans " + fmtDist(r) + ")" }, true);
   }
 
+  // Boutons : chaque type s'active ou se désactive indépendamment
   document.querySelectorAll(".mode").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      if (btn.dataset.mode === mode) return;
-      mode = btn.dataset.mode;
-      document.querySelectorAll(".mode").forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
-      if (lastSearch) { lastSearch.fit = true; run(lastSearch); }
-      else setStatus("Saisissez un lieu ou utilisez votre position pour commencer.");
+      var k = btn.dataset.mode, on = active[k];
+      if (on && !Object.keys(active).some(function (o) { return o !== k && active[o]; })) {
+        setStatus("Gardez au moins un type de lieu affiché."); return;
+      }
+      active[k] = !on;
+      btn.setAttribute("aria-pressed", String(active[k]));
+      render(false);
     });
   });
 
@@ -320,7 +337,7 @@
   map.on("moveend", function () { if (!busy && map.getZoom() >= 13) areaBtn.hidden = false; });
   areaBtn.addEventListener("click", function () {
     var b = map.getBounds(), c = map.getCenter();
-    run({ area: "(" + b.getSouth() + "," + b.getWest() + "," + b.getNorth() + "," + b.getEast() + ")", origin: [c.lat, c.lng], label: "dans la zone affichée", fit: false });
+    run({ area: "(" + b.getSouth() + "," + b.getWest() + "," + b.getNorth() + "," + b.getEast() + ")", origin: [c.lat, c.lng], label: "dans la zone affichée" }, false);
   });
 })();
 </script>
